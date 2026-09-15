@@ -5,12 +5,12 @@
 - App: `https://tesla.dtconcepts.net`, Nginx → loopback `8788`, systemd `tesla-link`.
 - Source: `/var/www/tesla`, GitHub `sticktrk/teslalink`.
 - History: D1 `teslalink-production`, accessed through an authenticated storage Worker. `wrangler.storage.jsonc` contains the binding; `migrations/` contains the schema.
-- Tesla receiver: `ssh.dtconcepts.net:9443`, DNS-only, with vehicle mutual TLS. Do not orange-cloud this hostname.
+- Tesla receiver: `tesla-receiver.dtconcepts.net:9443`, DNS-only, with vehicle mutual TLS. Do not orange-cloud this hostname.
 - Configure-only gateway: Nginx `/configure` → TLS loopback `8443`; separate secret plus Tesla bearer authentication required.
 - Account state: `data/tesla.sqlite`, owned by the unprivileged `tesla` service user. Daily SQLite backups retain seven copies in `backups/`. These backups do not include D1, secrets, or the receiver queue.
 - Receiver MQTT and retry queue: Docker named volumes. Do not use `docker compose down -v` unless intentionally deleting queued data.
 
-Orange-cloud `tesla.dtconcepts.net` and use Cloudflare **Full (strict)** TLS. The existing server firewall permits web traffic only from Cloudflare. Exclude the Tesla public-key URL from additional authentication/challenges; permit OAuth callbacks and authenticated ingestion/configuration. The app disables caching of private responses.
+Orange-cloud `tesla.dtconcepts.net` and use Cloudflare **Full (strict)** TLS. A hostname-specific Configuration Rule named `Tesla dashboard strict TLS` enforces Strict mode for this app without changing other domains. The existing server firewall permits web traffic only from Cloudflare. Exclude the Tesla public-key URL from additional authentication/challenges; permit OAuth callbacks and authenticated ingestion/configuration. The app disables caching of private responses.
 
 ## Finish Tesla setup
 

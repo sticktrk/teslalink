@@ -8,7 +8,7 @@ for line in source.read_text().splitlines():
     if '=' in line and not line.startswith('#'):
         key,value=line.split('=',1)
         values[key]=json.loads(value) if value.startswith('"') else value
-values.update(APP_URL='https://tesla.dtconcepts.net',PORT='8788',DATABASE_PATH='/var/www/tesla/data/tesla.sqlite',TESLA_REGION='na',RETENTION_DAYS='30',SNAPSHOT_COOLDOWN_SECONDS='900',SNAPSHOT_DAILY_LIMIT='24',STORAGE_API_URL='https://teslalink-storage.ratebucket.workers.dev',STORAGE_API_TOKEN=(root/'.storage-token').read_text().strip(),TELEMETRY_HOST='tesla-receiver.dtconcepts.net',TELEMETRY_PORT='9443',TELEMETRY_PROXY_URL='https://tesla.dtconcepts.net',TELEMETRY_CA=pathlib.Path('/etc/ssl/certs/ISRG_Root_X1.pem').read_text())
+values.update(APP_URL='https://tesla.dtconcepts.net',PORT='8788',DATABASE_PATH='/var/www/tesla/data/tesla.sqlite',TESLA_REGION='na',RETENTION_DAYS=values.get('RETENTION_DAYS','0'),SNAPSHOT_COOLDOWN_SECONDS='900',SNAPSHOT_DAILY_LIMIT='24',STORAGE_API_URL='https://teslalink-storage.ratebucket.workers.dev',STORAGE_API_TOKEN=(root/'.storage-token').read_text().strip(),TELEMETRY_HOST='tesla-receiver.dtconcepts.net',TELEMETRY_PORT='9443',TELEMETRY_PROXY_URL='https://tesla.dtconcepts.net',TELEMETRY_CA=pathlib.Path('/etc/ssl/certs/ISRG_Root_X1.pem').read_text())
 (root/'.env').write_text(''.join(f'{k}={json.dumps(v)}\n' for k,v in values.items()))
 os.chmod(root/'.env',0o640)
 shutil.chown(root/'.env',user='root',group='tesla')

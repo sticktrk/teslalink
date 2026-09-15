@@ -317,7 +317,7 @@ export class Garage extends DurableObject<Env> {
       vehicles: this.sql.exec<VehicleRow>('SELECT * FROM vehicles WHERE active=1 ORDER BY name').toArray().map(v => ({ vin: v.vin, name: v.name, state: v.state, updatedAt: v.updated_at, collecting: !!v.config, configExpires: v.config_expires, renewal: this.get(`renewal:${v.vin}`, null) })),
       pairingUrl: `https://www.tesla.com/_ak/${originUrl(this.env.APP_URL).hostname}`,
       revokeUrl: `https://auth.tesla.com/user/revoke/consent?${new URLSearchParams({ revoke_client_id: this.env.TESLA_CLIENT_ID || '', back_url: originUrl(this.env.APP_URL).origin })}`,
-      retentionDays: integer(this.env.RETENTION_DAYS, 30, 1, 365),
+      retentionDays: integer(this.env.RETENTION_DAYS, 0, 0, 365),
       usage: this.sql.exec('SELECT category,SUM(count) AS count FROM usage WHERE day>=? GROUP BY category', new Date().toISOString().slice(0, 7) + '-01').toArray(),
       lastIngestAt: this.get('last-ingest', null), storageBytes: this.sql.databaseSize,
       limits: { snapshotCooldown: integer(this.env.SNAPSHOT_COOLDOWN_SECONDS, 900, 60, 86400), snapshotDailyLimit: integer(this.env.SNAPSHOT_DAILY_LIMIT, 24, 1, 100) },
@@ -481,10 +481,13 @@ export class Garage extends DurableObject<Env> {
   }
 
   async alarm() {
+    const retentionDays = integer(this.env.RETENTION_DAYS, 0, 0, 365);
     try {
-      const cutoff = now() - integer(this.env.RETENTION_DAYS, 30, 1, 365) * 86400000;
-      await this.records.query('DELETE FROM events WHERE seq IN (SELECT seq FROM events WHERE received_at<? LIMIT 10000)', cutoff);
-      await this.records.query('DELETE FROM snapshots WHERE timestamp<?', cutoff);
+      if (retentionDays > 0) {
+        const cutoff = now() - retentionDays * 86400000;
+        await this.records.query('DELETE FROM events WHERE seq IN (SELECT seq FROM events WHERE received_at<? LIMIT 10000)', cutoff);
+        await this.records.query('DELETE FROM snapshots WHERE timestamp<?', cutoff);
+      }
       this.sql.exec('DELETE FROM sessions WHERE expires<?', now());
       this.sql.exec('DELETE FROM oauth WHERE expires<?', now());
       this.sql.exec('DELETE FROM throttles WHERE next_at<?', now());
@@ -511,11 +514,13 @@ export class Garage extends DurableObject<Env> {
       });
     } catch (error) { console.error('Tesla Link maintenance failed:', error instanceof Error ? error.name : 'UnknownError'); }
     finally {
-      const cutoff = now() - integer(this.env.RETENTION_DAYS, 30, 1, 365) * 86400000;
-      let delay = 60000;
+      let delay = retentionDays > 0 ? 60000 : 3600000;
       try {
-        const remaining = (await this.records.query('SELECT seq FROM events WHERE received_at<? LIMIT 1', cutoff)).length;
-        delay = remaining ? 60000 : 3600000;
+        if (retentionDays > 0) {
+          const cutoff = now() - retentionDays * 86400000;
+          const remaining = (await this.records.query('SELECT seq FROM events WHERE received_at<? LIMIT 1', cutoff)).length;
+          delay = remaining ? 60000 : 3600000;
+        }
       } finally { await this.ctx.storage.setAlarm(now() + delay); }
     }
   }

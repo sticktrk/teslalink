@@ -15,7 +15,7 @@
   "vars": {
     "APP_URL": "http://localhost:8787",
     "TESLA_REGION": "na",
-    "RETENTION_DAYS": "30",
+    "RETENTION_DAYS": "0",
     "SNAPSHOT_COOLDOWN_SECONDS": "900",
     "SNAPSHOT_DAILY_LIMIT": "24"
   },

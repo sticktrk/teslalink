@@ -12,7 +12,7 @@ before(async () => {
 for (const remote of [false,true]) for (const retention of [undefined,'0','30']) {
   test(`${remote?'D1-compatible':'local'} maintenance: retention ${retention??'default'} preserves history unless expiry is explicit`,async()=>{
     const local=new DatabaseSync(':memory:'), history=remote?new DatabaseSync(':memory:'):local;
-    const sql={exec(query:string,...params:any[]){if(!params.length&&query.split(';').filter(x=>x.trim()).length>1){local.exec(query);return {toArray:()=>[]};}return {toArray:()=>local.prepare(query).all(...params)};}};
+    const sql={exec(query:string,...params:any[]){if(!params.length&&query.split(';').filter(x=>x.trim()).length>1){local.exec(query);return {toArray:()=>[]};}const rows=local.prepare(query).all(...params);return {toArray:()=>rows};}};
     let alarm=0;
     const binding={prepare(query:string){return {bind(...params:any[]){return {async all(){return {results:history.prepare(query).all(...params)}}}}}}};
     const garage=new Garage({storage:{sql,async setAlarm(t:number){alarm=t;}}},{RETENTION_DAYS:retention,...(remote?{HISTORY_DB:binding}:{})});

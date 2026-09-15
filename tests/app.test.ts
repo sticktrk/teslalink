@@ -14,19 +14,20 @@ const instances: Miniflare[] = [];
 before(async () => { script = (await build({ entryPoints: ['src/index.ts'], bundle: true, format: 'esm', platform: 'browser', target: 'es2022', external: ['cloudflare:workers'], write: false })).outputFiles[0].text; });
 after(async () => { await Promise.all(instances.map(m => m.dispose())); });
 
-async function fixture(options: { online?: boolean; rateLimit?: boolean; skipped?: boolean; tokenExpiry?: number; redirectToken?: boolean; legacy?: boolean; d1?: boolean } = {}) {
+async function fixture(options: { online?: boolean; rateLimit?: boolean; skipped?: boolean; tokenExpiry?: number; redirectToken?: boolean; legacy?: boolean; d1?: boolean; authRelay?: boolean; authEdge?: boolean } = {}) {
   const calls: { path: string; method: string; body: any; authorization: string | null }[] = [];
   let refreshes = 0;
   const mf = new Miniflare(convertV4MiniflareOptions({
     name: 'test', modules: true, script, compatibilityDate: '2026-09-01',
     durableObjects: { GARAGE: { className: 'Garage', useSQLite: true } },
     ...(options.d1 ? { d1Databases: ['HISTORY_DB'] } : {}),
-    bindings: { APP_URL: origin, APP_PASSWORD: password, TOKEN_ENCRYPTION_KEY: randomBytes(32).toString('base64'), TESLA_CLIENT_ID: 'test-client', TESLA_CLIENT_SECRET: 'test-secret', TESLA_REGION: 'na', TESLA_PUBLIC_KEY: '-----BEGIN PUBLIC KEY-----\nTEST PUBLIC KEY\n-----END PUBLIC KEY-----', INGEST_TOKEN: ingest, TELEMETRY_HOST: 'receiver.example.com', TELEMETRY_CA: '-----BEGIN CERTIFICATE-----\nTEST CA\n-----END CERTIFICATE-----', TELEMETRY_PROXY_URL: 'https://receiver.example.com:8443', TELEMETRY_PROXY_TOKEN: 'test-only-proxy-secret-12345678901234567890' },
+    bindings: { ...(options.authRelay?{TESLA_AUTH_RELAY_URL:'https://auth-relay.example/oauth/token',TESLA_AUTH_RELAY_TOKEN:'test-relay-secret-12345678901234567890'}:{}), APP_URL: origin, APP_PASSWORD: password, TOKEN_ENCRYPTION_KEY: randomBytes(32).toString('base64'), TESLA_CLIENT_ID: 'test-client', TESLA_CLIENT_SECRET: 'test-secret', TESLA_REGION: 'na', TESLA_PUBLIC_KEY: '-----BEGIN PUBLIC KEY-----\nTEST PUBLIC KEY\n-----END PUBLIC KEY-----', INGEST_TOKEN: ingest, TELEMETRY_HOST: 'receiver.example.com', TELEMETRY_CA: '-----BEGIN CERTIFICATE-----\nTEST CA\n-----END CERTIFICATE-----', TELEMETRY_PROXY_URL: 'https://receiver.example.com:8443', TELEMETRY_PROXY_TOKEN: 'test-only-proxy-secret-12345678901234567890' },
     outboundService: async request => {
       const url = new URL(request.url), raw = await request.text();
       const body = raw ? request.headers.get('content-type')?.includes('application/json') ? JSON.parse(raw) : Object.fromEntries(new URLSearchParams(raw)) : null;
       calls.push({ path: url.pathname, method: request.method, body, authorization: request.headers.get('authorization') });
-      if (url.hostname === 'fleet-auth.prd.vn.cloud.tesla.com') {
+      if (url.hostname === 'fleet-auth.prd.vn.cloud.tesla.com' || url.hostname === 'auth-relay.example') {
+        if(options.authEdge)return new MFResponse('<html>Access Denied</html>',{status:403,headers:{'Content-Type':'text/html'}});
         if (options.redirectToken) return new MFResponse(null, { status: 302, headers: { Location: 'https://untrusted.example/token' } });
         if (body.grant_type === 'refresh_token') refreshes++;
         return MFResponse.json({ access_token: `ACCESS-SECRET-${refreshes}`, refresh_token: `REFRESH-SECRET-${refreshes}`, expires_in: body.grant_type === 'refresh_token' ? 3600 : options.tokenExpiry || 3600 });
@@ -237,4 +238,21 @@ for(const d1 of [false,true]) test(`trip history from ${d1?'D1':'local SQLite'} 
  assert.equal((await f.request(`/api/vehicles/${vin}/trips?from=${start}&to=${start+3*86400000}`)).status,400);
  assert.equal((await f.request(`/api/vehicles/5YJ3E1EA7KF000002/trips?${window}`)).status,404);
  assert.equal((await (await f.request('/api/status')).json() as any).retentionDays,0);
+});
+
+
+test('configured auth relay handles partner tokens, OAuth exchange, and refresh',async()=>{
+ const f=await fixture({authRelay:true,tokenExpiry:1});await f.connect();
+ assert.equal((await f.request('/api/register','POST',{})).status,200);
+ await f.discover();
+ const tokenCalls=f.calls.filter(c=>c.path==='/oauth/token');
+ assert.ok(tokenCalls.some(c=>c.body.grant_type==='client_credentials'));
+ assert.ok(tokenCalls.some(c=>c.body.grant_type==='authorization_code'));
+ assert.ok(tokenCalls.some(c=>c.body.grant_type==='refresh_token'));
+ assert.ok(tokenCalls.every(c=>c.authorization==='Bearer test-relay-secret-12345678901234567890'));
+ assert.equal(f.calls.filter(c=>c.path==='/oauth2/v3/token').length,0);
+});
+test('edge denial is distinguished from permission and billing errors',async()=>{
+ const f=await fixture({authEdge:true});await f.login();const r=await f.request('/api/register','POST',{});
+ assert.equal(r.status,403);assert.match((await r.json() as any).error,/edge network blocked/);
 });

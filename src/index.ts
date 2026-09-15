@@ -15,6 +15,8 @@ export interface Env {
   TESLA_CLIENT_SECRET?: string;
   TESLA_PUBLIC_KEY?: string;
   TESLA_REGION?: string;
+  TESLA_AUTH_RELAY_URL?: string;
+  TESLA_AUTH_RELAY_TOKEN?: string;
   RETENTION_DAYS?: string;
   SNAPSHOT_COOLDOWN_SECONDS?: string;
   SNAPSHOT_DAILY_LIMIT?: string;
@@ -407,7 +409,13 @@ export class Garage extends DurableObject<Env> {
     if (until > now()) throw new HttpError(429, 'Tesla requests are paused after a rate limit or temporary failure.', Math.ceil((until - now()) / 1000));
     let response: Response;
     this.count(`${category}_requests`);
-    try { response = await fetch(url, { ...init, redirect: 'manual', signal: AbortSignal.timeout(20000) }); }
+    try {
+      if (url === TOKEN_URL && this.env.TESLA_AUTH_RELAY_URL) {
+        const relay = new URL(this.env.TESLA_AUTH_RELAY_URL);
+        if (relay.protocol !== 'https:' || relay.username || relay.password || !this.env.TESLA_AUTH_RELAY_TOKEN || !(init.body instanceof URLSearchParams)) throw new Error('Invalid auth relay configuration');
+        response = await fetch(relay.toString(), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.env.TESLA_AUTH_RELAY_TOKEN}` }, body: JSON.stringify(Object.fromEntries(init.body)), redirect: 'manual', signal: AbortSignal.timeout(25000) });
+      } else response = await fetch(url, { ...init, redirect: 'manual', signal: AbortSignal.timeout(20000) });
+    }
     catch { this.set(`backoff:${bucket}`, now() + 60000); throw new HttpError(502, 'Tesla or the receiver could not be reached. Requests are paused for one minute.'); }
     if (response.status === 429 || response.status >= 500) {
       const seconds = retrySeconds(response.headers);
@@ -418,6 +426,9 @@ export class Garage extends DurableObject<Env> {
     let body: any;
     try { body = await response.json(); } catch { body = null; }
     if (!response.ok) {
+      if (category === 'auth' && response.status === 403 && (!body || body.error === 'tesla_edge_denied')) throw new HttpError(403, 'Tesla’s edge network blocked the token request before authentication. Check the server’s Tesla authentication relay; this is not a vehicle permission error.');
+      if (category === 'auth' && body?.error === 'invalid_client') throw new HttpError(401, 'Tesla rejected the application credentials. Check TESLA_CLIENT_ID and TESLA_CLIENT_SECRET, then restart the app.');
+      if (category === 'auth' && body?.error === 'unauthorized_client') throw new HttpError(403, 'Tesla has not enabled this authorization flow for the application. Check Authorization Code and Client Credentials access in the Tesla developer dashboard.');
       const messages: Record<number, string> = {
         400: 'Tesla rejected the request. Check application registration, scopes, field names, and receiver settings.',
         401: 'Tesla authorization failed. Reconnect your Tesla account if this persists.',

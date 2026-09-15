@@ -1,11 +1,13 @@
-import { equalSecret, readJson } from './security';
+import { equalSecret, readJson, HttpError } from './security';
+import { relayTeslaAuth } from './auth-relay';
 interface StorageEnv { DB:D1Database; STORAGE_TOKEN:string }
 export default {
   async fetch(request:Request,env:StorageEnv):Promise<Response>{
     const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'};
-    if(request.method!=='POST'||new URL(request.url).pathname!=='/query')return Response.json({error:'Not found'},{status:404,headers});
+    if(request.method!=='POST'||!['/query','/oauth/token'].includes(new URL(request.url).pathname))return Response.json({error:'Not found'},{status:404,headers});
     if(!env.STORAGE_TOKEN||env.STORAGE_TOKEN.length<32||!await equalSecret(request.headers.get('authorization')||'',`Bearer ${env.STORAGE_TOKEN}`))return Response.json({error:'Unauthorized'},{status:401,headers});
     try{
+      if(new URL(request.url).pathname==='/oauth/token')return await relayTeslaAuth(request);
       const body=await readJson(request,1048576);
       if(!Array.isArray(body?.statements)||body.statements.length<1||body.statements.length>45)throw new Error('Invalid statements');
       const statements=body.statements.map((s:any)=>{
@@ -14,6 +16,6 @@ export default {
       });
       const result=await env.DB.batch(statements);
       return Response.json({result:result.map(r=>({results:r.results,meta:r.meta}))},{headers});
-    }catch{return Response.json({error:'Storage operation failed'},{status:503,headers});}
+    }catch(error){return Response.json({error:error instanceof HttpError?error.message:'Gateway operation failed'},{status:error instanceof HttpError?error.status:503,headers});}
   },
 } satisfies ExportedHandler<StorageEnv>;

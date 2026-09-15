@@ -43,7 +43,9 @@ npx wrangler d1 migrations apply teslalink-production --remote --config wrangler
 npx wrangler deploy --config wrangler.storage.jsonc
 ```
 
-The server `.env` uses `STORAGE_API_URL` and `STORAGE_API_TOKEN`. This token matches the storage Worker's `STORAGE_TOKEN` secret. It grants access to this database gateway; no Cloudflare account token is placed on the server. Rotate both values together. Never expose the token to browser code.
+Tesla token exchanges use the same authenticated Cloudflare gateway at `/oauth/token`, configured through `TESLA_AUTH_RELAY_URL` and `TESLA_AUTH_RELAY_TOKEN`. This handles Tesla edge denials from the server network. Only the official Tesla token endpoint is reachable; grants, audience, scopes, and the callback URL are restricted. Credentials and tokens stay server-side and are not logged. Ordinary Fleet API calls and the vehicle receiver remain on the server.
+
+The server `.env` uses `STORAGE_API_URL` and `STORAGE_API_TOKEN`. This token matches the storage Worker's `STORAGE_TOKEN` secret. It grants access to this database gateway; no Cloudflare account token is placed on the server. The OAuth relay token also matches this gateway secret; rotate all three together. Never expose the token to browser code.
 
 TLS certificates renew through Certbot. The renewal pre/post hooks briefly permit HTTP validation through the existing firewall and then remove that temporary rule. The deploy hook copies renewed certificates to the receiver and reloads Nginx/restarts TLS services. Certificate/private-key group access is restricted to the official containers' UID/GID 65532; do not make private keys world-readable.
 

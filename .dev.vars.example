@@ -1,0 +1,16 @@
+# Local development: copy to .dev.vars. Production: wrangler secret put NAME.
+# Generate the first two with npm run keys. Never reuse either as a Tesla key.
+APP_PASSWORD="replace-with-at-least-24-random-characters"
+TOKEN_ENCRYPTION_KEY="replace-with-base64-encoded-32-random-bytes"
+TESLA_CLIENT_ID=""
+TESLA_CLIENT_SECRET=""
+# A single-line value with literal \n escapes is accepted.
+TESLA_PUBLIC_KEY=""
+# Streaming: shared secret with receiver/.env (at least 32 random characters).
+INGEST_TOKEN=""
+TELEMETRY_HOST=""
+TELEMETRY_PORT="443"
+TELEMETRY_CA=""
+# HTTPS gateway provided by receiver/ on the same server, port 8443.
+TELEMETRY_PROXY_URL=""
+TELEMETRY_PROXY_TOKEN=""

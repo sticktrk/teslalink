@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tesla-link",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "GARAGE", "class_name": "Garage" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Garage"] }],
+  "vars": {
+    "APP_URL": "http://localhost:8787",
+    "TESLA_REGION": "na",
+    "RETENTION_DAYS": "30",
+    "SNAPSHOT_COOLDOWN_SECONDS": "900",
+    "SNAPSHOT_DAILY_LIMIT": "24"
+  },
+  "observability": { "enabled": false }
+}

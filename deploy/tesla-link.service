@@ -1,0 +1,23 @@
+[Unit]
+Description=Tesla Link private vehicle data app
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tesla
+Group=tesla
+WorkingDirectory=/var/www/tesla
+ExecStart=/opt/tesla-link/bin/node --env-file=/var/www/tesla/.env /var/www/tesla/dist-node/server.mjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=35
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/www/tesla/data
+
+[Install]
+WantedBy=multi-user.target

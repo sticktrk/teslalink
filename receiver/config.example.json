@@ -1,0 +1,29 @@
+{
+  "host": "0.0.0.0",
+  "port": 443,
+  "log_level": "warn",
+  "json_log_enable": true,
+  "namespace": "tesla",
+  "reliable_ack_sources": {
+    "V": "mqtt",
+    "alerts": "mqtt",
+    "errors": "mqtt"
+  },
+  "records": {
+    "V": ["mqtt"],
+    "alerts": ["mqtt"],
+    "errors": ["mqtt"],
+    "connectivity": ["mqtt"]
+  },
+  "mqtt": {
+    "broker": "mqtt:1883",
+    "client_id": "fleet-telemetry",
+    "topic_base": "tesla",
+    "qos": 1,
+    "retained": false
+  },
+  "tls": {
+    "server_cert": "/certs/fullchain.pem",
+    "server_key": "/certs/privkey.pem"
+  }
+}

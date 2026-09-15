@@ -1,0 +1,6 @@
+[Unit]
+Description=Back up Tesla Link account state
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /var/www/tesla/deploy/backup-state.py
+UMask=0077

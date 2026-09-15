@@ -1,0 +1,8 @@
+[Unit]
+Description=Daily Tesla Link account-state backup
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=900
+[Install]
+WantedBy=timers.target

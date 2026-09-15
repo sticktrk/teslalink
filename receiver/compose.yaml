@@ -1,0 +1,60 @@
+services:
+  mqtt:
+    image: eclipse-mosquitto:2.0.22
+    restart: unless-stopped
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mqtt-data:/mosquitto/data
+    networks: [internal]
+    # The broker is private to this Docker network. Never publish port 1883.
+
+  telemetry:
+    image: tesla/fleet-telemetry:v0.9.4
+    restart: unless-stopped
+    command: ["/fleet-telemetry", "-config=/etc/fleet-telemetry/config.json"]
+    ports: ["${TELEMETRY_BIND:-0.0.0.0:443}:443"]
+    volumes:
+      - ./config.json:/etc/fleet-telemetry/config.json:ro
+      - ./certs:/certs:ro
+    depends_on: [mqtt, bridge]
+    networks: [internal, outbound]
+
+  command-proxy:
+    image: tesla/vehicle-command:0.4.1
+    restart: unless-stopped
+    command: ["-tls-key", "/secrets/proxy-key.pem", "-cert", "/secrets/proxy-cert.pem", "-key-file", "/secrets/private-key.pem", "-host", "0.0.0.0", "-port", "4443"]
+    volumes: ["./secrets:/secrets:ro"]
+    networks: [internal, outbound]
+    # No published port: only the authenticated, configure-only bridge can reach it.
+
+  bridge:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MQTT_HOST: mqtt
+      MQTT_PORT: "1883"
+      MQTT_TOPIC_BASE: tesla
+      MQTT_CLIENT_ID: tesla-link-bridge
+      SPOOL_PATH: /data/spool.sqlite
+      PROXY_URL: https://command-proxy:4443
+      PROXY_CA_FILE: /secrets/proxy-cert.pem
+      TLS_CERT: /certs/fullchain.pem
+      TLS_KEY: /certs/privkey.pem
+      GATEWAY_PORT: "8443"
+    ports: ["${GATEWAY_BIND:-127.0.0.1:8443}:8443"]
+    volumes:
+      - bridge-data:/data
+      - ./certs:/certs:ro
+      - ./secrets/proxy-cert.pem:/secrets/proxy-cert.pem:ro
+    depends_on: [mqtt]
+    networks: [internal, outbound]
+
+volumes:
+  mqtt-data:
+  bridge-data:
+
+networks:
+  internal:
+    internal: true
+  outbound:

@@ -1,0 +1,10 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "teslalink-storage",
+  "account_id": "e25df25724ba27024ad08e3096b5bd37",
+  "main": "src/storage-worker.ts",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": true,
+  "observability": { "enabled": false },
+  "d1_databases": [{ "binding": "DB", "database_name": "teslalink-production", "database_id": "d51edfa4-feec-45ad-b16f-99cd2c83c203", "migrations_dir": "migrations" }]
+}

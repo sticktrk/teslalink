@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#101416" />
+    <meta name="description" content="Your private Tesla data collector. Vehicle signals, history, and collection settings." />
+    <title>Tesla Link — Your vehicle data</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/style.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <a class="brand" href="/" aria-label="Tesla Link home"><span class="brand-mark" aria-hidden="true">∿</span><span>TESLA <b>LINK</b></span></a>
+      <div class="header-right"><span class="private-label">PRIVATE GARAGE</span><button id="logout" class="quiet" hidden>Sign out</button></div>
+    </header>
+    <main id="app" aria-busy="true"><p class="loading">Opening your garage…</p></main>
+    <div id="toast" role="status" aria-live="polite" hidden></div>
+    <footer><span>YOUR CAR. YOUR DATA.</span><a href="https://developer.tesla.com/docs/fleet-api/billing-and-limits" target="_blank" rel="noreferrer">Tesla usage & limits ↗</a><span>Independent app · Not affiliated with Tesla</span></footer>
+  </body>
+</html>

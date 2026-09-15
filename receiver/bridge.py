@@ -32,7 +32,7 @@ class NoRedirect(HTTPRedirectHandler):
 
 def http_request(url, data, headers, context=None):
     opener = build_opener(NoRedirect(), HTTPSHandler(context=context or ssl.create_default_context()))
-    return opener.open(Request(url, data=data, headers=headers, method="POST"), timeout=25)
+    return opener.open(Request(url, data=data, headers={"User-Agent": "TeslaLink/1.0", **headers}, method="POST"), timeout=25)
 
 
 def decode_message(topic, payload, base, allowed, received_at=None):
@@ -199,7 +199,7 @@ def main():
             while True:
                 try:
                     opener = build_opener(NoRedirect(), HTTPSHandler(context=ssl.create_default_context()))
-                    with opener.open(Request(endpoint, headers={"Authorization": f"Bearer {token}"}), timeout=20) as response:
+                    with opener.open(Request(endpoint, headers={"Authorization": f"Bearer {token}", "User-Agent": "TeslaLink/1.0"}), timeout=20) as response:
                         vins = json.load(response).get("vins", [])
                     if not isinstance(vins, list) or any(not isinstance(v, str) or not VIN.fullmatch(v) for v in vins):
                         raise ValueError("invalid vehicle list")

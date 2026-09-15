@@ -56,3 +56,14 @@ test('event ingestion accepts false, zero, and invalid/null readings; rejects ba
   assert.equal(validateEvents({ events: [{ ...event, value: null }] })[0].value, null);
   for (const change of [{ vin: 'bad' }, { timestamp: Date.now() + 3600000 }, { kind: 'command' }, { timestampSource: 'guessed' }]) assert.throws(() => validateEvents({ events: [{ ...event, ...change }] }));
 });
+
+ test('self-driving mileage obeys Tesla minimum delta requirement in presets and custom fields', () => {
+  for (const preset of ['complete', 'high-detail']) {
+    assert.equal(buildFields(preset).SelfDrivingMilesSinceReset.minimum_delta, 1);
+    assert.doesNotThrow(() => validateFields(buildFields(preset)));
+  }
+  for (const minimum_delta of [undefined, 0, 0.5]) {
+    assert.throws(() => validateFields({ SelfDrivingMilesSinceReset: { interval_seconds: 300, minimum_delta } }), /minimum_delta of at least 1/);
+  }
+  assert.doesNotThrow(() => validateFields({ SelfDrivingMilesSinceReset: { interval_seconds: 300, minimum_delta: 2 } }));
+});

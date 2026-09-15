@@ -27,6 +27,8 @@ export function buildFields(preset: string, location = true): Record<string, Fie
       if (field.name === 'ChargerVoltage') config.minimum_delta = 1;
       if (field.name === 'Location') config.minimum_delta = 10;
     }
+    // Tesla requires this threshold even in the high-detail preset.
+    if (field.name === 'SelfDrivingMilesSinceReset') config.minimum_delta = 1;
     return [field.name, config];
   }));
 }
@@ -41,6 +43,7 @@ export function validateFields(input: unknown): Record<string, FieldConfig> {
     const { interval_seconds, minimum_delta, ...extra } = value;
     if (Object.keys(extra).length || integer(interval_seconds, -1, 1, 3600) === -1) throw new HttpError(400, `${name}: interval_seconds must be an integer from 1 to 3600.`);
     if (minimum_delta !== undefined && (typeof minimum_delta !== 'number' || !Number.isFinite(minimum_delta) || minimum_delta < 0)) throw new HttpError(400, `${name}: minimum_delta must be nonnegative.`);
+    if (name === 'SelfDrivingMilesSinceReset' && (minimum_delta === undefined || minimum_delta < 1)) throw new HttpError(400, 'SelfDrivingMilesSinceReset requires minimum_delta of at least 1.');
     return [name, { interval_seconds, ...(minimum_delta !== undefined ? { minimum_delta } : {}) }];
   }));
 }

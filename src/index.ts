@@ -1,4 +1,5 @@
 import { Records } from './records';
+import { tripHistory } from './trip-history';
 import { DurableObject } from 'cloudflare:workers';
 import { HttpError, equalSecret, hash, integer, originUrl, randomToken, readJson, retrySeconds, seal, unseal, validVin } from './security';
 import { API_HOSTS, SCOPES, TOKEN_URL, buildFields, catalog, validateEvents, validateFields } from './telemetry';
@@ -108,6 +109,7 @@ export class Garage extends DurableObject<Env> {
       CREATE TABLE IF NOT EXISTS usage (day TEXT NOT NULL, category TEXT NOT NULL, count INTEGER NOT NULL, PRIMARY KEY(day, category));
       CREATE TABLE IF NOT EXISTS throttles (key TEXT PRIMARY KEY, next_at INTEGER NOT NULL);
     `);
+    this.sql.exec("CREATE INDEX IF NOT EXISTS events_trip_time ON events(vin,timestamp,seq) WHERE kind='signal' AND field IN ('Gear','VehicleSpeed','Location','Odometer','Soc','BatteryLevel')");
     if (!this.sql.exec<{ name: string }>('PRAGMA table_info(events)').toArray().some(column => column.name === 'numeric_value')) this.sql.exec('ALTER TABLE events ADD COLUMN numeric_value REAL');
   }
 
@@ -249,7 +251,7 @@ export class Garage extends DurableObject<Env> {
       });
       return json({ count: all.length });
     });
-    const match = /^\/api\/vehicles\/([A-HJ-NPR-Z0-9]{17})(?:\/(snapshot|telemetry|diagnostics|history|export|series))?$/.exec(path);
+    const match = /^\/api\/vehicles\/([A-HJ-NPR-Z0-9]{17})(?:\/(snapshot|telemetry|diagnostics|history|export|series|trips))?$/.exec(path);
     if (match) {
       const vin = match[1], action = match[2];
       const vehicle = this.vehicle(vin);
@@ -292,6 +294,7 @@ export class Garage extends DurableObject<Env> {
         this.sql.exec('UPDATE vehicles SET config=NULL,config_expires=NULL WHERE vin=?', vin);
         return json({ ok: true, result });
       });
+      if (action === 'trips' && method === 'GET') return json(await tripHistory(this.records, vin, url));
       if (action === 'history' && method === 'GET') return json(await this.history(vin, url));
       if (action === 'export' && method === 'GET') {
         if (url.searchParams.get('all') === '1') return this.exportAll(vin);

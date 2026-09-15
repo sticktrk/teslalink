@@ -20,7 +20,7 @@ Orange-cloud `tesla.dtconcepts.net` and use Cloudflare **Full (strict)** TLS. A 
 4. Read the app password from `/var/www/tesla/deployment-access.txt`. Sign in, register the app, connect Tesla, and discover vehicles.
 5. Pair the app key through the Tesla mobile app, run diagnostics, then enable your desired streaming preset. The receiver automatically refreshes its vehicle allowlist every minute.
 
-History is retained indefinitely (`RETENTION_DAYS=0`), with no automatic deletion of telemetry or snapshots. Positive values of 1–365 enable optional expiry. D1 capacity is finite, so growing beyond its limits requires archival storage or database partitioning; indefinite retention does not mean unlimited storage. High-detail collection consumes more Tesla signals and D1 writes. D1 stores location samples, but this version does not automatically construct trips or display routes.
+History is retained indefinitely (`RETENTION_DAYS=0`), with no automatic deletion of telemetry or snapshots. Positive values of 1–365 enable optional expiry. D1 capacity is finite, so growing beyond its limits requires archival storage or database partitioning; indefinite retention does not mean unlimited storage. High-detail collection consumes more Tesla signals and D1 writes. The Trips tab reconstructs trips and displays route traces from stored location and driving signals. See the root README for inference rules and limits.
 
 ## Operations
 

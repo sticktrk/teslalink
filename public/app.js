@@ -63,7 +63,7 @@ function render() {
   const car = status.vehicles.find(v => v.vin === vin);
   app.innerHTML = `<div class="page-heading"><div><p class="eyebrow">VEHICLE DATA / GARAGE</p><h1>${car ? esc(car.name) : 'Your garage'}</h1><p class="vin">${car ? esc(car.vin) : 'Connect once. Collect while your car is awake.'}</p></div><div class="vehicle-picker">${car ? `<label for="vehicle">Vehicle</label><select id="vehicle">${status.vehicles.map(v => `<option value="${esc(v.vin)}" ${v.vin === vin ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}</select>` : ''}</div></div>
     ${setupBanner()}
-    ${car ? `${stats()}<nav class="tabs" role="tablist" aria-label="Vehicle views">${['overview','signals','collection','history'].map(t => `<button id="tab-${t}" role="tab" aria-selected="${tab === t}" aria-controls="tab-panel" data-tab="${t}">${t[0].toUpperCase() + t.slice(1)}${t === 'signals' ? ` · ${details.signals.filter(s=>s.field !== '_connectivity').length}` : ''}</button>`).join('')}</nav><section id="tab-panel" role="tabpanel" aria-labelledby="tab-${tab}"></section>` : noCar()}`;
+    ${car ? `${stats()}<nav class="tabs" role="tablist" aria-label="Vehicle views">${['overview','trips','signals','collection','history'].map(t => `<button id="tab-${t}" role="tab" aria-selected="${tab === t}" aria-controls="tab-panel" data-tab="${t}">${t[0].toUpperCase() + t.slice(1)}${t === 'signals' ? ` · ${details.signals.filter(s=>s.field !== '_connectivity').length}` : ''}</button>`).join('')}</nav><section id="tab-panel" role="tabpanel" aria-labelledby="tab-${tab}"></section>` : noCar()}`;
   $('#vehicle')?.addEventListener('change', event => { vin = event.target.value; historyCursor = ''; historyPrevious = []; action(null, load); });
   document.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => { tab = button.dataset.tab; render(); $(`#tab-${tab}`).focus(); }));
   document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', () => handleGlobal(button)));
@@ -96,6 +96,7 @@ async function handleGlobal(button) {
 
 function renderTab() {
   if (tab === 'overview') overview();
+  else if (tab === 'trips') trips();
   else if (tab === 'signals') signals();
   else if (tab === 'collection') collection();
   else history();
@@ -175,3 +176,42 @@ async function start(){try{const session=await api('/api/session');if(session.au
 await start();
 // Refresh only the stored overview. Never replace an in-progress configuration edit.
 setInterval(async()=>{if(!status||tab!=='overview'||document.hidden)return;try{await load(true);if(tab==='overview')render();}catch{}},60000);
+
+function localDay(d=new Date()){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+let tripDay=localDay(), tripRequest=0;
+const tripState=t=>t.state==='completed'?'Parked':t.state==='active'?'In progress':t.endReason==='window_boundary'?'Partial window':'Telemetry gap';
+async function trips(){
+  const request=++tripRequest,expectedVin=vin;
+  $('#tab-panel').innerHTML=`<section class="panel"><div class="panel-header"><div><h2>Trip log</h2><p class="small muted">Automatic trips from your saved driving and location readings.</p></div><div class="row"><button id="trip-prev" class="quiet" aria-label="Previous day">←</button><div><label for="trip-day">Date · your local time</label><input id="trip-day" type="date" value="${tripDay}" max="${localDay()}"></div><button id="trip-next" class="quiet" aria-label="Next day" ${tripDay>=localDay()?'disabled':''}>→</button><button id="trip-refresh" class="quiet">Refresh</button></div></div><div id="trip-content" aria-live="polite"><p class="muted">Reading stored trips…</p></div></section>`;
+  const shift=days=>{const d=new Date(`${tripDay}T12:00:00`);d.setDate(d.getDate()+days);tripDay=localDay(d);trips();};
+  $('#trip-prev').onclick=()=>shift(-1);$('#trip-next').onclick=()=>shift(1);$('#trip-refresh').onclick=()=>trips();
+  $('#trip-day').onchange=e=>{if(/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)){tripDay=e.target.value;trips();}};
+  try{
+    const from=new Date(`${tripDay}T00:00:00`),to=new Date(from);to.setDate(to.getDate()+1);
+    const result=await api(`/api/vehicles/${expectedVin}/trips?from=${from.getTime()}&to=${to.getTime()}`);
+    if(request!==tripRequest||tab!=='trips'||vin!==expectedVin)return;
+    const items=result.trips;
+    $('#trip-content').innerHTML=`${result.truncated?'<p class="notice warn">This window exceeds the 100,000-reading scan limit. Results are partial; all raw readings remain available in History.</p>':''}${items.length?`<div class="row spread trip-summary"><p>${items.length} trip${items.length===1?'':'s'} · ${number(items.reduce((sum,t)=>sum+(t.distanceMiles||0),0),1)} mi recorded</p><button id="trip-csv" class="quiet">Export trip summary CSV</button></div><div class="trip-layout"><div class="trip-list" aria-label="Trips">${items.map((t,i)=>`<button class="trip-card" data-trip="${i}" aria-pressed="false"><span><strong>${esc(new Date(t.startAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</strong><span class="badge neutral">${esc(tripState(t))}</span></span><span>${number(t.distanceMiles,1)} mi · ${number(t.durationSeconds/60,1)} min</span><small>${esc(date(t.startAt))}${t.startInferred?' · Start inferred':''}</small></button>`).join('')}</div><div id="trip-detail"></div></div>`:'<div class="empty"><h3>No trips detected for this day</h3><p>Once streaming is enabled, drives will appear here automatically. Include Location, Gear, VehicleSpeed, and Odometer in Collection.</p><p>Try a different date if you have already driven.</p></div>'}<p class="notice">Trips overlapping this day are shown, including drives across midnight. Park ends a trip; a 15-minute gap ends an incomplete trip. Missing gear can be inferred from movement. Times may reflect when the receiver got the data, especially after an outage. Routes are drawn privately without external map requests.</p>`;
+    if(!items.length)return;
+    const select=index=>{document.querySelectorAll('[data-trip]').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.trip)===index)));tripDetail(items[index]);};
+    document.querySelectorAll('[data-trip]').forEach(b=>b.onclick=()=>select(Number(b.dataset.trip)));select(0);
+    $('#trip-csv').onclick=()=>{const rows=[['Started','Last reading','State','End reason','Distance miles','Distance source','Duration minutes','Max speed mph','Start battery percent','End battery percent'],...items.map(t=>[new Date(t.startAt).toISOString(),new Date(t.lastAt).toISOString(),t.state,t.endReason,t.distanceMiles,t.distanceSource,t.durationSeconds/60,t.maxSpeedMph,t.startBattery,t.endBattery])];download(rows.map(r=>r.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(',')).join('\r\n'),`tesla-trips-${tripDay}.csv`,'text/csv');};
+  }catch(error){if(request===tripRequest&&tab==='trips'&&vin===expectedVin)$('#trip-content').innerHTML=`<p class="notice warn">${esc(error.message)}</p>`;}
+}
+function tripDetail(t){
+  const points=t.points;
+  $('#trip-detail').innerHTML=`<div class="panel-header"><div><h3>${esc(date(t.startAt))}</h3><p class="small muted">${esc(tripState(t))}${t.startInferred?' · Beginning inferred from movement':''}</p></div><button id="trip-gpx" class="quiet" ${points.length?'':'disabled'}>Export route GPX</button></div><div class="trip-metrics"><div><span>Distance${t.distanceSource==='gps'?' · GPS estimate':''}</span><strong>${number(t.distanceMiles,2)} mi</strong></div><div><span>Recorded duration</span><strong>${number(t.durationSeconds/60,1)} min</strong></div><div><span>Peak recorded speed</span><strong>${number(t.maxSpeedMph,1)} mph</strong></div><div><span>Battery</span><strong>${number(t.startBattery,1)} → ${number(t.endBattery,1)}%</strong></div></div><div id="trip-route"></div><p class="small muted">Last trip reading: ${esc(date(t.lastAt))}. ${t.distanceSource==='odometer'?'Distance uses odometer readings near both ends.':'GPS distance counts observed route segments only and may underestimate the drive.'}</p>${t.hasRouteGaps||t.rejectedPoints?`<p class="notice warn">${t.hasRouteGaps?'Missing route segments are left disconnected. ':''}${t.rejectedPoints?`${t.rejectedPoints} implausible GPS point(s) excluded.`:''}</p>`:''}`;
+  $('#trip-gpx').onclick=()=>{const segments=[];for(const p of points){if(!segments.length||segments.at(-1).id!==p.segment)segments.push({id:p.segment,points:[]});segments.at(-1).points.push(p);}download(`<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="Tesla Link" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Tesla trip ${new Date(t.startAt).toISOString()}</name>${segments.map(s=>`<trkseg>${s.points.map(p=>`<trkpt lat="${p.latitude}" lon="${p.longitude}"><time>${new Date(p.timestamp).toISOString()}</time></trkpt>`).join('')}</trkseg>`).join('')}</trk></gpx>`,`tesla-trip-${t.startAt}.gpx`,'application/gpx+xml');};
+  if(!points.length){$('#trip-route').innerHTML='<div class="chart-empty"><p>No valid GPS readings for this trip. Driving signals still recorded the trip.</p></div>';return;}
+  const latitude=points.reduce((sum,p)=>sum+p.latitude,0)/points.length,cos=Math.max(0.01,Math.cos(latitude*Math.PI/180));
+  let longitude=points[0].longitude;
+  const projected=points.map(p=>{let lon=p.longitude;while(lon-longitude>180)lon-=360;while(lon-longitude< -180)lon+=360;longitude=lon;return {x:lon*cos,y:-p.latitude};});
+  const bounds=projected.reduce((b,p)=>({minX:Math.min(b.minX,p.x),maxX:Math.max(b.maxX,p.x),minY:Math.min(b.minY,p.y),maxY:Math.max(b.maxY,p.y)}),{minX:Infinity,maxX:-Infinity,minY:Infinity,maxY:-Infinity});
+  const scale=Math.min(620/Math.max(bounds.maxX-bounds.minX,0.0001),320/Math.max(bounds.maxY-bounds.minY,0.0001));
+  const coords=projected.map(p=>({x:350+(p.x-(bounds.minX+bounds.maxX)/2)*scale,y:190+(p.y-(bounds.minY+bounds.maxY)/2)*scale}));
+  let path='';coords.forEach((p,i)=>{path+=`${i===0||points[i].segment!==points[i-1].segment?'M':'L'}${p.x.toFixed(2)},${p.y.toFixed(2)} `;});
+  $('#trip-route').innerHTML=`<div class="route-toolbar"><span class="small muted">Route trace · north up · ${number(points.length)} points</span><div class="row"><button id="route-out" class="quiet" aria-label="Zoom out">−</button><button id="route-fit" class="quiet">Fit</button><button id="route-in" class="quiet" aria-label="Zoom in">+</button></div></div><svg id="route-svg" class="route-svg" viewBox="0 0 700 380" role="img" aria-label="Recorded trip route, start in green and end in orange"><title>Recorded GPS route. No street basemap. Gaps are disconnected.</title><path d="${path}" fill="none" stroke="#a7f3c5" stroke-width="3" vector-effect="non-scaling-stroke"/><circle cx="${coords[0].x}" cy="${coords[0].y}" r="6" fill="#a7f3c5"/><circle cx="${coords.at(-1).x}" cy="${coords.at(-1).y}" r="6" fill="#f6bd78"/><circle id="route-point" r="5" fill="#fff" stroke="#101416" stroke-width="2"/></svg><label for="route-time">Explore the route · green start, orange end</label><input id="route-time" type="range" min="0" max="${points.length-1}" value="0" step="1"><p id="route-reading" class="small muted"></p>`;
+  let zoom=1;
+  const show=()=>{const index=Number($('#route-time').value),p=points[index],c=coords[index];$('#route-point').setAttribute('cx',c.x);$('#route-point').setAttribute('cy',c.y);$('#route-reading').textContent=`${date(p.timestamp)} · ${p.latitude.toFixed(5)}, ${p.longitude.toFixed(5)}`;const width=700/zoom,height=380/zoom;$('#route-svg').setAttribute('viewBox',zoom===1?'0 0 700 380':`${c.x-width/2} ${c.y-height/2} ${width} ${height}`);};
+  $('#route-time').oninput=show;$('#route-in').onclick=()=>{zoom=Math.min(16,zoom*2);show();};$('#route-out').onclick=()=>{zoom=Math.max(1,zoom/2);show();};$('#route-fit').onclick=()=>{zoom=1;show();};show();
+}

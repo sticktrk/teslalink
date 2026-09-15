@@ -219,3 +219,22 @@ test('D1 persists telemetry and snapshots, handles duplicate IDs, and serves his
   const status=await (await f.request('/api/status')).json() as any;
   assert.equal(status.historyStorage,'Cloudflare D1');
 });
+
+for(const d1 of [false,true]) test(`trip history from ${d1?'D1':'local SQLite'} stays private, includes late data, and never polls Tesla`,async()=>{
+ const f=await fixture({d1});const start=Date.now()-120000,window=`from=${start-60000}&to=${start+180000}`;
+ assert.equal((await f.request(`/api/vehicles/${vin}/trips?${window}`)).status,401);
+ await f.connect();await f.discover();
+ const events=[['Gear','ShiftStateD',0],['Location',{latitude:36,longitude:-78},0],['VehicleSpeed',25,10000],['Location',{latitude:36.003,longitude:-78},30000],['Gear','ShiftStateP',60000]].map(([field,value,offset],i)=>({id:`trip-${i}`,vin,kind:'signal',field,value,timestamp:start+Number(offset),timestampSource:'receiver'}));
+ assert.equal((await f.request('/api/ingest','POST',{events},{Authorization:`Bearer ${ingest}`})).status,200);
+ const calls=f.calls.length;
+ const first=await f.request(`/api/vehicles/${vin}/trips?${window}`);assert.equal(first.status,200);const result=await first.json() as any;
+ assert.equal(result.trips.length,1);assert.equal(result.trips[0].state,'completed');assert.equal(result.trips[0].points.length,2);assert.equal(result.truncated,false);
+ const late={...events[1],id:'trip-late',value:{latitude:36.006,longitude:-78},timestamp:start+55000};
+ assert.equal((await f.request('/api/ingest','POST',{events:[late,events[1]]},{Authorization:`Bearer ${ingest}`})).status,200);
+ const reread=await (await f.request(`/api/vehicles/${vin}/trips?${window}`)).json() as any;assert.equal(reread.trips[0].points.length,3);assert.equal(reread.trips[0].id,result.trips[0].id);
+ assert.equal(f.calls.length,calls,'trip views do not call Tesla');
+ assert.equal((await f.request(`/api/vehicles/${vin}/trips?from=NaN&to=0`)).status,400);
+ assert.equal((await f.request(`/api/vehicles/${vin}/trips?from=${start}&to=${start+3*86400000}`)).status,400);
+ assert.equal((await f.request(`/api/vehicles/5YJ3E1EA7KF000002/trips?${window}`)).status,404);
+ assert.equal((await (await f.request('/api/status')).json() as any).retentionDays,0);
+});

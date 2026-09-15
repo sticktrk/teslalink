@@ -6,7 +6,7 @@ The deployed setup runs the app and Tesla receiver on the server, with **Cloudfl
 
 An alternative Cloudflare Worker deployment is also supported below, with account state and history stored in a SQLite Durable Object by default. Continuous streaming always needs the included receiver.
 
-This is a single-owner app: anyone with its app password can see the linked vehicles and their location history. Location, speed, gear, and odometer readings provide the data for trip tracking; **automatic trip grouping and route maps are not implemented yet**.
+This is a single-owner app: anyone with its app password can see the linked vehicles and their location history. The **Trips** tab automatically groups driving readings into trips, with date navigation, distance/duration/battery summaries, interactive route traces, CSV summaries, and GPX route exports.
 
 ## What it collects
 
@@ -102,6 +102,16 @@ Follow [receiver/README.md](receiver/README.md) to run Tesla’s official receiv
 5. Check diagnostics for `synced: true`. Signals arrive when the car is awake and connected. Unsupported hardware, firmware, keys, or configuration limits are surfaced as failed setup, never as successful collection.
 
 Tesla configurations expire after 30 days in this app. An hourly maintenance alarm checks for renewal during the final seven days, no more than once per vehicle per day. It renews only if a configuration still exists at Tesla and points to this receiver. It never recreates a removed configuration automatically. **Stop streaming** removes the Tesla configuration while preserving already collected data.
+
+## Trip logging
+
+Trips are reconstructed from retained `Gear`, `VehicleSpeed`, `Location`, `Odometer`, `Soc`, and `BatteryLevel` readings when you view a date. No additional Tesla calls or database writes are needed to view trips. Late and out-of-order uploads are included on the next refresh; original records remain unchanged. All built-in presets include these signals (location must stay enabled).
+
+Drive/reverse or observed movement starts a trip. Park ends it. A 15-minute gap in driving evidence marks an incomplete trip instead of inventing a parking time. Stationary parked GPS drift is ignored, impossible jumps are rejected, and route gaps longer than two minutes are drawn as separate segments. Missing gear can be inferred from movement and is labeled. Vehicle speed and odometer use Tesla's miles/mph units; GPS distance is a fallback estimate and excludes missing segments.
+
+The date picker uses your browser's local timezone. Queries include six hours of context on either side to join overnight trips; longer drives at the edge may be partial. Each request examines up to 100,000 relevant readings; an explicit warning appears if that bound is reached. All raw history remains exportable. This first version derives trips from source data rather than storing editable trip records, addresses, or business/personal classifications.
+
+The route view is a private geographic trace with zoom and a time slider, not a street basemap. GPX exports include the retained route points and preserve gaps; the route filter removes tiny GPS movements. CSV exports provide per-trip summaries. Both can contain sensitive driving/location history. The receiver currently timestamps individual signals on receipt, so queued vehicle data may distort inferred trip times after an outage. Real-car validation remains necessary after Tesla onboarding.
 
 ## Tesla limits, storage, and costs
 

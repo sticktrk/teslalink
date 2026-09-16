@@ -37,7 +37,7 @@ const now = () => Date.now();
 function safeResponse(response: Response): Response {
   const result = new Response(response.body, response);
   result.headers.set('Cache-Control', 'no-store');
-  result.headers.set('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+  result.headers.set('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
   result.headers.set('X-Content-Type-Options', 'nosniff');
   result.headers.set('Referrer-Policy', 'no-referrer');
   result.headers.set('X-Frame-Options', 'DENY');

@@ -154,3 +154,7 @@ Deployment checks cover native server login/status, D1 authenticated write/read/
 - [Cloudflare Durable Object limits](https://developers.cloudflare.com/durable-objects/platform/limits/)
 
 The receiver pins Tesla Fleet Telemetry `v0.9.4`, vehicle-command `0.4.1`, and paho-mqtt `2.1.0`. Review Tesla’s field catalog, firmware notes, image releases, and API changes before upgrading. The Wrangler/Miniflare versions are pinned in the lockfile so local tests match the deployment tooling.
+
+### Trip street maps
+
+Trips use locally hosted Leaflet 1.9.4 (BSD-2-Clause; license in `public/vendor/leaflet/LICENSE`) and OpenStreetMap standard tiles. No map API key is required. Only visible map tiles are requested, with browser caching, OSM attribution and an origin-only cross-site referrer. The tile service sees the viewer's IP and requested map area; vehicle credentials, VINs and route records are never sent to it. Routes remain usable if tiles fail. No offline tile download or prefetch is implemented. See https://operations.osmfoundation.org/policies/tiles/.

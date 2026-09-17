@@ -256,3 +256,35 @@ test('edge denial is distinguished from permission and billing errors',async()=>
  const f=await fixture({authEdge:true});await f.login();const r=await f.request('/api/register','POST',{});
  assert.equal(r.status,403);assert.match((await r.json() as any).error,/edge network blocked/);
 });
+
+test('mileage data is private and collector credentials cannot bypass owner rules',async()=>{
+ const f=await fixture();
+ assert.equal((await f.request('/api/mileage/settings')).status,401);
+ assert.equal((await f.request('/api/mileage/collector')).status,401);
+ const auth={Authorization:`Bearer ${ingest}`};
+ const configuration=await f.request('/api/mileage/collector','GET',undefined,auth);assert.equal(configuration.status,200);assert.deepEqual(await configuration.json(),{repos:[],authors:[],enabled:false});
+ await f.login();
+ const settings={enabled:true,places:['home','miami','jersey'].map((id,i)=>({id,name:id,address:'Example address',latitude:35+i/10,longitude:-78,radius:100})),repos:['owner/one','owner/two'],authors:['owner']};
+ assert.equal((await f.request('/api/mileage/settings','POST',settings,{Origin:'https://evil.example'})).status,403);
+ assert.equal((await f.request('/api/mileage/settings','POST',settings)).status,200);
+ assert.equal((await f.request('/api/mileage/sync','POST',{})).status,200);
+ assert.equal((await f.request('/api/mileage/collector','POST',{from:Date.now()-1000,to:Date.now(),complete:true,activities:[]},auth)).status,200);
+ assert.equal(f.calls.length,0,'mileage never calls Tesla');
+});
+
+for(const d1 of [false,true])test(`automatic mileage reconstructs ${d1?'D1':'local'} telemetry and saves an evidence snapshot`,async()=>{
+ const f=await fixture({d1});await f.connect();await f.discover();
+ const settings={enabled:true,places:['home','miami','jersey'].map((id,i)=>({id,name:id,address:'Example address',latitude:35+i/10,longitude:-78,radius:100})),repos:['owner/one','owner/two'],authors:['owner']};
+ assert.equal((await f.request('/api/mileage/settings','POST',settings)).status,200);
+ const start=Date.now()-1200000,events:any[]=[];
+ const add=(field:string,value:any,offset:number)=>events.push({id:`mileage-${events.length}`,vin,kind:'signal',field,value,timestamp:start+offset,timestampSource:'vehicle'});
+ add('Odometer',5000,0);add('Location',{latitude:35,longitude:-78},0);add('Gear','D',1);add('VehicleSpeed',45,2);
+ for(let n=1;n<=6;n++)add('Location',{latitude:35+n/30,longitude:-78},n*100000);
+ add('Odometer',5014,600000);add('Gear','P',600001);
+ assert.equal((await f.request('/api/ingest','POST',{events},{Authorization:`Bearer ${ingest}`})).status,200);
+ const paid=f.calls.length;const sync=await f.request('/api/mileage/sync','POST',{});assert.equal(sync.status,200,await sync.clone().text());
+ const from=start-1000,to=Date.now();const response=await f.request(`/api/mileage?vin=${vin}&from=${from}&to=${to}`);const data=await response.json() as any;
+ assert.equal(data.trips.length,1);assert.equal(data.trips[0].classification,'Business');assert.equal(data.trips[0].distanceMiles,14);
+ const saved=await f.request('/api/mileage/report','POST',{vin,from,to});const report=await saved.json() as any;assert.equal(saved.status,200);assert.equal(report.totalMiles,14);
+ const retrieved=await f.request(`/api/mileage/reports/${report.id}`);assert.deepEqual(await retrieved.json(),report);assert.equal(f.calls.length,paid,'mileage does not query Tesla');
+});

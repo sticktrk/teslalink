@@ -1,0 +1,8 @@
+[Unit]
+Description=Hourly GitHub mileage evidence collection
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1h
+Persistent=true
+[Install]
+WantedBy=timers.target

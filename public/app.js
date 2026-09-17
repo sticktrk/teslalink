@@ -1,3 +1,4 @@
+import { showMileage } from './mileage.js';
 const $ = (selector) => document.querySelector(selector);
 const app = $('#app');
 let tripMap = null;
@@ -66,7 +67,7 @@ function render() {
   const car = status.vehicles.find(v => v.vin === vin);
   app.innerHTML = `<div class="page-heading"><div><p class="eyebrow">VEHICLE DATA / GARAGE</p><h1>${car ? esc(car.name) : 'Your garage'}</h1><p class="vin">${car ? esc(car.vin) : 'Connect once. Collect while your car is awake.'}</p></div><div class="vehicle-picker">${car ? `<label for="vehicle">Vehicle</label><select id="vehicle">${status.vehicles.map(v => `<option value="${esc(v.vin)}" ${v.vin === vin ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}</select>` : ''}</div></div>
     ${setupBanner()}
-    ${car ? `${stats()}<nav class="tabs" role="tablist" aria-label="Vehicle views">${['overview','trips','signals','collection','history'].map(t => `<button id="tab-${t}" role="tab" aria-selected="${tab === t}" aria-controls="tab-panel" data-tab="${t}">${t[0].toUpperCase() + t.slice(1)}${t === 'signals' ? ` · ${details.signals.filter(s=>s.field !== '_connectivity').length}` : ''}</button>`).join('')}</nav><section id="tab-panel" role="tabpanel" aria-labelledby="tab-${tab}"></section>` : noCar()}`;
+    ${car ? `${stats()}<nav class="tabs" role="tablist" aria-label="Vehicle views">${['overview','trips','mileage','signals','collection','history'].map(t => `<button id="tab-${t}" role="tab" aria-selected="${tab === t}" aria-controls="tab-panel" data-tab="${t}">${t[0].toUpperCase() + t.slice(1)}${t === 'signals' ? ` · ${details.signals.filter(s=>s.field !== '_connectivity').length}` : ''}</button>`).join('')}</nav><section id="tab-panel" role="tabpanel" aria-labelledby="tab-${tab}"></section>` : noCar()}`;
   $('#vehicle')?.addEventListener('change', event => { vin = event.target.value; historyCursor = ''; historyPrevious = []; action(null, load); });
   document.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => { tab = button.dataset.tab; render(); $(`#tab-${tab}`).focus(); }));
   document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', () => handleGlobal(button)));
@@ -101,6 +102,7 @@ function renderTab() {
   clearTripMap();
   if (tab === 'overview') overview();
   else if (tab === 'trips') trips();
+  else if (tab === 'mileage') showMileage($('#tab-panel'),vin);
   else if (tab === 'signals') signals();
   else if (tab === 'collection') collection();
   else history();

@@ -1,0 +1,15 @@
+[Unit]
+Description=Tesla Link GitHub mileage evidence collector
+After=network-online.target tesla-link.service
+Wants=network-online.target
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/var/www/tesla
+ExecStart=/opt/tesla-link/bin/node --env-file=/var/www/tesla/.env /var/www/tesla/scripts/collect-github.mjs
+TimeoutStartSec=15min
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only

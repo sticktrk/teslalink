@@ -1,3 +1,4 @@
+import { Mileage } from './mileage';
 import { Records } from './records';
 import { tripHistory } from './trip-history';
 import { DurableObject } from 'cloudflare:workers';
@@ -90,6 +91,7 @@ function errorResponse(error: unknown): Response {
 export class Garage extends DurableObject<Env> {
   private sql: SqlStorage;
   private records: Records;
+  private mileage: Mileage;
   private externalQueue: Promise<unknown> = Promise.resolve();
 
   constructor(ctx: DurableObjectState, env: Env) {
@@ -111,6 +113,7 @@ export class Garage extends DurableObject<Env> {
       CREATE TABLE IF NOT EXISTS usage (day TEXT NOT NULL, category TEXT NOT NULL, count INTEGER NOT NULL, PRIMARY KEY(day, category));
       CREATE TABLE IF NOT EXISTS throttles (key TEXT PRIMARY KEY, next_at INTEGER NOT NULL);
     `);
+    this.mileage = new Mileage(this.sql, this.records);
     this.sql.exec("CREATE INDEX IF NOT EXISTS events_trip_time ON events(vin,timestamp,seq) WHERE kind='signal' AND field IN ('Gear','VehicleSpeed','Location','Odometer','Soc','BatteryLevel')");
     if (!this.sql.exec<{ name: string }>('PRAGMA table_info(events)').toArray().some(column => column.name === 'numeric_value')) this.sql.exec('ALTER TABLE events ADD COLUMN numeric_value REAL');
   }
@@ -167,6 +170,13 @@ export class Garage extends DurableObject<Env> {
 
   private async route(request: Request): Promise<Response> {
     const url = new URL(request.url), path = url.pathname, method = request.method;
+    if (path === '/api/mileage/collector' || path === '/api/mileage/collector/sync') {
+      if (!this.env.INGEST_TOKEN || this.env.INGEST_TOKEN.length < 32 || !await equalSecret(request.headers.get('authorization') || '', `Bearer ${this.env.INGEST_TOKEN}`)) throw new HttpError(401, 'Invalid collector credentials.');
+      if (path.endsWith('/sync') && method === 'POST') return json(await this.mileage.sync());
+      if (method === 'GET') { const s=this.mileage.settings(); return json({repos:s?.repos||[],authors:s?.authors||[],enabled:s?.enabled||false}); }
+      if (method === 'POST') return json(this.mileage.ingestGithub(await readJson(request)));
+      throw new HttpError(405, 'Method not allowed.');
+    }
     if (path === '/api/ingest' && method === 'POST') return this.ingest(request);
     if (path === '/api/receiver/vehicles' && method === 'GET') {
       if (!this.env.INGEST_TOKEN || this.env.INGEST_TOKEN.length < 32 || !await equalSecret(request.headers.get('authorization') || '', `Bearer ${this.env.INGEST_TOKEN}`)) throw new HttpError(401, 'Invalid ingestion credentials.');
@@ -199,6 +209,13 @@ export class Garage extends DurableObject<Env> {
       this.sql.exec('DELETE FROM sessions WHERE id=?', session);
       return json({ ok: true }, 200, { 'Set-Cookie': this.cookie('', 0) });
     }
+    if (path === '/api/mileage/settings' && method === 'GET') return json(this.mileage.settings());
+    if (path === '/api/mileage/settings' && method === 'POST') {const result=this.mileage.configure(await readJson(request));await this.ensureAlarm();return json(result);}
+    if (path === '/api/mileage/sync' && method === 'POST') {this.throttle('mileage-sync',30);return json(await this.mileage.sync());}
+    if (path === '/api/mileage/reports' && method === 'GET') return json(this.sql.exec('SELECT id,created_at FROM mileage_reports ORDER BY created_at DESC LIMIT 100').toArray());
+    if (/^\/api\/mileage\/reports\/[a-f0-9-]{36}$/.test(path) && method === 'GET') {const row=this.sql.exec<{data:string}>('SELECT data FROM mileage_reports WHERE id=?',path.split('/').at(-1)!).toArray()[0];if(!row)throw new HttpError(404,'Report not found.');return json(JSON.parse(row.data));}
+    if (path === '/api/mileage' && method === 'GET') {const vin=url.searchParams.get('vin')||'';this.vehicle(vin);return json(this.mileage.list(vin,Number(url.searchParams.get('from')),Number(url.searchParams.get('to'))));}
+    if (path === '/api/mileage/report' && method === 'POST') {const body=await readJson(request);this.vehicle(body.vin);return json(this.mileage.report(body.vin,body.from,body.to,body.tripId));}
     if (path === '/api/status' && method === 'GET') return json(this.status());
     if (path === '/api/catalog' && method === 'GET') return json({ fields: catalog, presets: Object.fromEntries(['essentials', 'complete', 'high-detail'].map(name => [name, buildFields(name)])) });
     if (path === '/api/connect' && method === 'POST') {
@@ -496,6 +513,9 @@ export class Garage extends DurableObject<Env> {
 
   async alarm() {
     const retentionDays = integer(this.env.RETENTION_DAYS, 0, 0, 365);
+    try {
+      await this.mileage.sync();
+    } catch { this.mileage.set('syncWarning','Automatic mileage sync failed; will retry.'); }
     try {
       if (retentionDays > 0) {
         const cutoff = now() - retentionDays * 86400000;

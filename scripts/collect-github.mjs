@@ -4,7 +4,7 @@ import http from 'node:http';
 const origin=new URL(process.env.APP_URL);
 function app(path, body) {
   return new Promise((resolve, reject) => {
-    const request = http.request({hostname:'127.0.0.1', port:Number(process.env.PORT||8788), path,
+    const request = http.request({agent:false, hostname:'127.0.0.1', port:Number(process.env.PORT||8788), path,
       method:body?'POST':'GET', headers:{Host:origin.host, Authorization:`Bearer ${process.env.INGEST_TOKEN}`, 'Content-Type':'application/json'}}, response => {
       let data='';
       response.on('data', chunk => data+=chunk);

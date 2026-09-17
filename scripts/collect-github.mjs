@@ -2,7 +2,22 @@
 import {execFileSync} from 'node:child_process';
 import http from 'node:http';
 const origin=new URL(process.env.APP_URL);
-function app(path,body){return new Promise((resolve,reject)=>{const r=http.request({hostname:'127.0.0.1',port:Number(process.env.PORT||8788),path,method:body?'POST':'GET',headers:{Host:origin.host,Authorization:`Bearer ${process.env.INGEST_TOKEN}`,'Content-Type':'application/json'}},s=>{let data='';s.on('data',x=>data+=x);s.on('end',()=>{if(s.statusCode!==200)return reject(new Error(`App HTTP ${s.statusCode}`));try{resolve(JSON.parse(data));}catch{reject(new Error('Invalid app response'));}});r.setTimeout(120000,()=>r.destroy(new Error('App timeout')));r.on('error',reject);r.end(body?JSON.stringify(body):undefined);});}
+function app(path, body) {
+  return new Promise((resolve, reject) => {
+    const request = http.request({hostname:'127.0.0.1', port:Number(process.env.PORT||8788), path,
+      method:body?'POST':'GET', headers:{Host:origin.host, Authorization:`Bearer ${process.env.INGEST_TOKEN}`, 'Content-Type':'application/json'}}, response => {
+      let data='';
+      response.on('data', chunk => data+=chunk);
+      response.on('end', () => {
+        if(response.statusCode!==200) return reject(new Error(`App HTTP ${response.statusCode}`));
+        try { resolve(JSON.parse(data)); } catch { reject(new Error('Invalid app response')); }
+      });
+    });
+    request.setTimeout(120000, () => request.destroy(new Error('App timeout')));
+    request.on('error', reject);
+    request.end(body?JSON.stringify(body):undefined);
+  });
+}
 function github(endpoint){return JSON.parse(execFileSync('gh',['api',endpoint,'-H','Accept: application/vnd.github+json'],{encoding:'utf8',timeout:60000,maxBuffer:32*1024*1024,stdio:['ignore','pipe','pipe']}));}
 try{
  const config=await app('/api/mileage/collector');if(!config.enabled)process.exit(0);

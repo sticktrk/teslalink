@@ -10,6 +10,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: node --check scripts/collect-github.mjs
+      - run: node --check public/mileage.js
       - run: npm run check
       - run: npm test
       - run: npm run build:server
